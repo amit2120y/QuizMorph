@@ -547,9 +547,62 @@ function sleep(ms){
   return new Promise(res => setTimeout(res, state.settings.animations ? ms : Math.min(ms,15)));
 }
 
+function exportQuizJson(){
+  const data = {
+    title: state.pdfMeta?.filename ? state.pdfMeta.filename.replace(/\.pdf$/i, '') : "QuizMorph Quiz",
+    questions: state.questions
+  };
+  const str = JSON.stringify(data, null, 2);
+  const blob = new Blob([str], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (data.title.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'quiz') + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function loadPresetQuiz(jsonPath, title){
+  try{
+    const res = await fetch(jsonPath);
+    if(!res.ok) throw new Error("Failed to load preset");
+    const data = await res.json();
+    state.questions = data.questions;
+    state.invalidQuestions = [];
+    state.pdfMeta = { filename: title || data.title || "Preset Quiz", pages: 1, size: 0 };
+    state.ocrPagesUsed = 0;
+    state.screen = 'config';
+    render();
+  } catch(err){
+    state.error = "Could not load preset quiz.";
+    render();
+  }
+}
+
 async function startProcessing(file){
   state.error = null;
   state.pdfMeta = { filename: file.name, size: file.size, pages: null };
+  
+  if(file.name.toLowerCase().endsWith('.json') || file.type === 'application/json'){
+    try {
+      const contentText = await file.text();
+      const parsed = JSON.parse(contentText);
+      if(Array.isArray(parsed.questions) && parsed.questions.length > 0){
+        state.questions = parsed.questions;
+        state.invalidQuestions = [];
+        state.pdfMeta = { filename: parsed.title || file.name, pages: 1, size: file.size };
+        state.ocrPagesUsed = 0;
+        state.screen = 'config';
+        render();
+        return;
+      }
+    } catch(jErr){
+      state.error = "Invalid JSON quiz file format.";
+      render();
+      return;
+    }
+  }
+
   state.screen = 'processing';
   state.processingLines = [];
   state.processingPct = 0;
@@ -799,25 +852,26 @@ const App = {
   homeHtml(){
     return `
       <div class="brand">QUIZMORPH</div>
-      <div class="subtitle">Turn any quiz PDF into an interactive quiz.</div>
-      <div class="supporting">Upload your PDF. Answer every question. Get your result. Restart anytime.</div>
+      <div class="subtitle">Turn any quiz PDF or JSON file into an interactive quiz.</div>
+      <div class="supporting">Upload your PDF or JSON. Answer every question. Get your result. Restart anytime.</div>
       <div class="home-badges">
         <span>NO ACCOUNT</span><span>NO DATABASE</span><span>NO SAVED HISTORY</span>
       </div>
-      <div class="upload-zone ${state.dragOver?'drag':''}" id="uploadZone" tabindex="0" role="button" aria-label="Upload quiz PDF">
+      <div class="upload-zone ${state.dragOver?'drag':''}" id="uploadZone" tabindex="0" role="button" aria-label="Upload quiz PDF or JSON">
         <div class="icon">▣</div>
-        <div class="primary-text">DROP QUIZ PDF HERE</div>
+        <div class="primary-text">DROP QUIZ PDF OR JSON HERE</div>
         <div class="or">— OR —</div>
-        <button class="btn btn-primary" id="selectPdfBtn" type="button">[ SELECT PDF ]</button>
-        <input type="file" accept="application/pdf,.pdf" id="fileInput" style="display:none" />
+        <button class="btn btn-primary" id="selectPdfBtn" type="button">[ SELECT FILE ]</button>
+        <input type="file" accept="application/pdf,.pdf,.json,application/json" id="fileInput" style="display:none" />
       </div>
-      <div style="margin-top:14px; text-align:center;">
+      <div style="margin-top:14px; text-align:center; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="loadPresetWeek1Btn" type="button">[ 📚 LOAD WEEK 1 SAMPLE QUIZ ]</button>
         <button class="btn btn-ghost" id="openGeminiModalBtn" type="button">
           ${state.geminiApiKey ? '⚡ GEMINI AI PARSER ACTIVE' : '[ ⚡ ENABLE GEMINI AI PARSER ]'}
         </button>
       </div>
       ${state.error ? `<div class="error-box">⚠ ${esc(state.error)}<div class="btn-row" style="margin-top:10px;"><button class="btn btn-ghost" id="tryAgainBtn">[ TRY AGAIN ]</button></div></div>` : ''}
-      <div class="footer-note" style="margin-top:18px;">Supports text-based and scanned PDFs (auto OCR) · Max 40MB · Scanned pages take longer to process</div>
+      <div class="footer-note" style="margin-top:18px;">Supports PDF and JSON formats · Scanned pages use auto OCR</div>
     `;
   },
 
@@ -873,7 +927,8 @@ const App = {
       </div>
 
       <div class="btn-row">
-        <button class="btn btn-ghost" id="backToUploadBtn">[ NEW PDF ]</button>
+        <button class="btn btn-ghost" id="exportJsonConfigBtn">[ 📥 EXPORT JSON ]</button>
+        <button class="btn btn-ghost" id="backToUploadBtn">[ NEW QUIZ ]</button>
         <button class="btn btn-primary" id="startQuizBtn">[ START QUIZ ]</button>
       </div>
     `;
@@ -943,9 +998,10 @@ const App = {
         <div class="stat"><div class="num">${fmtTime(sc.timeTaken)}</div><div class="lbl">TIME TAKEN</div></div>
       </div>
       <div class="btn-row">
+        <button class="btn btn-ghost" id="exportJsonResultBtn">[ 📥 EXPORT JSON ]</button>
         <button class="btn btn-ghost" id="reviewAnswersBtn">[ REVIEW ANSWERS ]</button>
         <button class="btn btn-ghost" id="restartQuizBtn">[ RESTART QUIZ ]</button>
-        <button class="btn btn-primary" id="newPdfBtn">[ NEW PDF ]</button>
+        <button class="btn btn-primary" id="newPdfBtn">[ NEW QUIZ ]</button>
       </div>
     `;
   },
@@ -1098,6 +1154,8 @@ const App = {
     if(selBtn) selBtn.addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
     const openGeminiBtn = document.getElementById('openGeminiModalBtn');
     if(openGeminiBtn) openGeminiBtn.addEventListener('click', () => { state.modal = {type:'geminiKey'}; render(); });
+    const presetBtn = document.getElementById('loadPresetWeek1Btn');
+    if(presetBtn) presetBtn.addEventListener('click', () => loadPresetQuiz('quizzes/week-1-solution.json', 'Forests and Their Management - Week 1'));
     const tryAgain = document.getElementById('tryAgainBtn');
     if(tryAgain) tryAgain.addEventListener('click', () => { state.error=null; render(); });
 
@@ -1123,6 +1181,8 @@ const App = {
     if(backUp) backUp.addEventListener('click', newPdf);
     const startBtn = document.getElementById('startQuizBtn');
     if(startBtn) startBtn.addEventListener('click', startQuiz);
+    const expConfigBtn = document.getElementById('exportJsonConfigBtn');
+    if(expConfigBtn) expConfigBtn.addEventListener('click', exportQuizJson);
 
     // Quiz
     document.querySelectorAll('.option').forEach(el=>{
@@ -1147,6 +1207,8 @@ const App = {
     if(restartBtn) restartBtn.addEventListener('click', () => { state.modal={type:'restartConfirm'}; render(); });
     const newPdfBtn = document.getElementById('newPdfBtn');
     if(newPdfBtn) newPdfBtn.addEventListener('click', newPdf);
+    const expResultBtn = document.getElementById('exportJsonResultBtn');
+    if(expResultBtn) expResultBtn.addEventListener('click', exportQuizJson);
 
     // Review
     const filterAll = document.getElementById('filterAll');

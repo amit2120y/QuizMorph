@@ -1,0 +1,125 @@
+{
+  "title": "Forests and Their Management - Week 1",
+  "questions": [
+    {
+      "id": "q_1_0",
+      "originalNumber": 1,
+      "question": "Which of these is not a consumptive value?",
+      "options": [
+        { "id": "opt_1_0", "text": "timber" },
+        { "id": "opt_1_1", "text": "firewood" },
+        { "id": "opt_1_2", "text": "non-timber forest products" },
+        { "id": "opt_1_3", "text": "education" }
+      ],
+      "correctOptionId": "opt_1_3"
+    },
+    {
+      "id": "q_2_1",
+      "originalNumber": 2,
+      "question": "Tropical moist forests do not include",
+      "options": [
+        { "id": "opt_2_0", "text": "tropical wet evergreen forests" },
+        { "id": "opt_2_1", "text": "tropical semi-evergreen forests" },
+        { "id": "opt_2_2", "text": "moist deciduous forests" },
+        { "id": "opt_2_3", "text": "littoral and swamp forests" }
+      ],
+      "correctOptionId": "opt_2_2"
+    },
+    {
+      "id": "q_3_2",
+      "originalNumber": 3,
+      "question": "Montane sub - tropical forests do not include",
+      "options": [
+        { "id": "opt_3_0", "text": "montane wet temperate forests" },
+        { "id": "opt_3_1", "text": "Himalayan moist temperate forests" },
+        { "id": "opt_3_2", "text": "Himalayan dry temperate forests" },
+        { "id": "opt_3_3", "text": "dry evergreen forests" }
+      ],
+      "correctOptionId": "opt_3_3"
+    },
+    {
+      "id": "q_4_3",
+      "originalNumber": 4,
+      "question": "Which of these is non-consumptive value?",
+      "options": [
+        { "id": "opt_4_0", "text": "timber" },
+        { "id": "opt_4_1", "text": "firewood" },
+        { "id": "opt_4_2", "text": "education" },
+        { "id": "opt_4_3", "text": "non-timber forest products" }
+      ],
+      "correctOptionId": "opt_4_2"
+    },
+    {
+      "id": "q_5_4",
+      "originalNumber": 5,
+      "question": "Which of these is an option value?",
+      "options": [
+        { "id": "opt_5_0", "text": "potential future drugs" },
+        { "id": "opt_5_1", "text": "timber" },
+        { "id": "opt_5_2", "text": "education" },
+        { "id": "opt_5_3", "text": "firewood" }
+      ],
+      "correctOptionId": "opt_5_0"
+    },
+    {
+      "id": "q_6_5",
+      "originalNumber": 6,
+      "question": "Which of these is an existence value?",
+      "options": [
+        { "id": "opt_6_0", "text": "timber" },
+        { "id": "opt_6_1", "text": "knowing that tigers exist in wild" },
+        { "id": "opt_6_2", "text": "education" },
+        { "id": "opt_6_3", "text": "firewood" }
+      ],
+      "correctOptionId": "opt_6_1"
+    },
+    {
+      "id": "q_7_6",
+      "originalNumber": 7,
+      "question": "The Champion and Seth classification system was published in",
+      "options": [
+        { "id": "opt_7_0", "text": "1936" },
+        { "id": "opt_7_1", "text": "1968" },
+        { "id": "opt_7_2", "text": "1988" },
+        { "id": "opt_7_3", "text": "1998" }
+      ],
+      "correctOptionId": "opt_7_1"
+    },
+    {
+      "id": "q_8_7",
+      "originalNumber": 8,
+      "question": "Sub-alpine forests are classified under major group",
+      "options": [
+        { "id": "opt_8_0", "text": "I" },
+        { "id": "opt_8_1", "text": "II" },
+        { "id": "opt_8_2", "text": "III" },
+        { "id": "opt_8_3", "text": "V" }
+      ],
+      "correctOptionId": "opt_8_3"
+    },
+    {
+      "id": "q_9_8",
+      "originalNumber": 9,
+      "question": "Alpine scrub is classified under major group",
+      "options": [
+        { "id": "opt_9_0", "text": "III" },
+        { "id": "opt_9_1", "text": "IV" },
+        { "id": "opt_9_2", "text": "V" },
+        { "id": "opt_9_3", "text": "VI" }
+      ],
+      "correctOptionId": "opt_9_3"
+    },
+    {
+      "id": "q_10_9",
+      "originalNumber": 10,
+      "question": "Which of these is not an indirect use value?",
+      "options": [
+        { "id": "opt_10_0", "text": "soil prevention" },
+        { "id": "opt_10_1", "text": "flood control" },
+        { "id": "opt_10_2", "text": "firewood" },
+        { "id": "opt_10_3", "text": "carbon sequestration" }
+      ],
+      "correctOptionId": "opt_10_2"
+    }
+  ]
+}
