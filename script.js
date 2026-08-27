@@ -62,47 +62,59 @@ function isItemBold(item, content){
   return false;
 }
 
-function sortPdfItemsSpatially(items){
-  if(!items || items.length === 0) return [];
-  const tolerance = 4;
-  const sorted = items.slice().filter(item => item && item.str && item.str.trim().length > 0);
-
-  sorted.sort((a, b) => {
-    const yA = a.transform[5];
-    const yB = b.transform[5];
-    const diffY = yB - yA; // top to bottom
-    if (Math.abs(diffY) > tolerance) {
-      return diffY;
-    }
-    const xA = a.transform[4];
-    const xB = b.transform[4];
-    return xA - xB; // left to right
-  });
-
-  return sorted;
+function stripTags(str){
+  if(!str) return '';
+  return str.replace(/\[FONT\:[^\]]+\]|\[\/FONT\]|\[\/?BOLD\]/gi, '').trim();
 }
 
 function extractPageLines(content){
-  const sortedItems = sortPdfItemsSpatially(content.items);
-  if(sortedItems.length === 0) return '';
+  if(!content || !content.items || content.items.length === 0) return '';
 
-  let lastY = null, lineText = '';
-  const lines = [];
+  const validItems = content.items.filter(item => item && item.str && item.str.trim().length > 0);
+  if(validItems.length === 0) return '';
+
+  // 1. Sort strictly by Y descending (top of page to bottom)
+  validItems.sort((a, b) => {
+    const yDiff = b.transform[5] - a.transform[5];
+    if(Math.abs(yDiff) > 0.001) return yDiff;
+    return a.transform[4] - b.transform[4];
+  });
+
+  // 2. Group into rows
+  const rows = [];
+  let currentTopY = null;
+  let currentRowsItems = [];
   const yTolerance = 4;
 
-  for(const item of sortedItems){
+  for(const item of validItems){
     const y = item.transform[5];
-    if(lastY !== null && Math.abs(y - lastY) > yTolerance){
-      if(lineText.trim()) lines.push(lineText.trim());
-      lineText = '';
+    if(currentTopY === null || Math.abs(currentTopY - y) > yTolerance){
+      if(currentRowsItems.length > 0){
+        rows.push(currentRowsItems);
+      }
+      currentTopY = y;
+      currentRowsItems = [item];
+    } else {
+      currentRowsItems.push(item);
     }
-    const bold = isItemBold(item, content);
-    const itemStr = bold ? `[BOLD]${item.str}[/BOLD]` : item.str;
-    lineText += (lineText ? ' ' : '') + itemStr;
-    lastY = y;
   }
-  if(lineText.trim()) lines.push(lineText.trim());
-  return lines.join('\n');
+  if(currentRowsItems.length > 0){
+    rows.push(currentRowsItems);
+  }
+
+  // 3. Sort each row by X ascending (left to right) and format text
+  const lineStrings = rows.map(rowItems => {
+    rowItems.sort((a, b) => a.transform[4] - b.transform[4]);
+    return rowItems.map(item => {
+      const bold = isItemBold(item, content);
+      const fontTag = item.fontName ? `[FONT:${item.fontName}]` : '';
+      const boldTag = bold ? `[BOLD]` : '';
+      const closeTag = (bold || item.fontName) ? `[/FONT]` : '';
+      return `${fontTag}${boldTag}${item.str}${closeTag}`;
+    }).join(' ');
+  });
+
+  return lineStrings.join('\n');
 }
 
 // Extracts text page-by-page, automatically falling back to client-side OCR
@@ -202,7 +214,7 @@ function cleanBullets(str){
 
 function isHeaderOrFooter(line){
   if(!line) return true;
-  const cleanLine = line.replace(/\[\/?BOLD\]/gi, '').trim();
+  const cleanLine = stripTags(line);
   if(!cleanLine) return true;
   if(/^Page\s+\d+(\s+of\s+\d+)?$/i.test(cleanLine)) return true;
   if(/^(?:Forests\s+and\s+their\s+management\s*\:?\s*Week\s*\d*)$/i.test(cleanLine)) return true;
@@ -233,7 +245,7 @@ function extractInlineAnswerFromText(str, currentOptions){
     let letter = null;
     if(currentOptions){
       for(const [L, optText] of Object.entries(currentOptions)){
-        const cleanOpt = optText.trim().toLowerCase();
+        const cleanOpt = stripTags(optText).toLowerCase();
         if(cleanOpt === ansVal || ansVal.startsWith(L.toLowerCase() + '.')){
           letter = L;
           break;
@@ -255,7 +267,7 @@ function parseQuestions(rawText){
   const optStart = /^(?:[•\*\-\s]*)(?:\(|\[)?([A-Da-d]|[1-4])[\.\)\:\]\-\s]\s*(.*)/;
   const answerKeyHeader = /^(?:ANSWER\s*KEY|ANSWERS|SOLUTIONS|ANSWER\s*SHEET)/i;
 
-  const rawQuestions = []; // {number, textLines:[], options:{A:'',B:'',...}, inlineAnswer: null}
+  const rawQuestions = [];
   let current = null;
   let pendingTextLines = [];
   let qCounter = 1;
@@ -264,7 +276,7 @@ function parseQuestions(rawText){
 
   for(const line of lines){
     if(isHeaderOrFooter(line)) continue;
-    const cleanLineForCheck = line.replace(/\[\/?BOLD\]/gi, '').trim();
+    const cleanLineForCheck = stripTags(line);
     if(answerKeyHeader.test(cleanLineForCheck)){ mode = 'answerkey'; continue; }
 
     if(mode === 'answerkey'){
@@ -315,7 +327,7 @@ function parseQuestions(rawText){
         const ansVal = genericAnsMatch[1].trim().toLowerCase();
         let matchedLetter = null;
         for(const [L, optText] of Object.entries(current.options)){
-          const cleanOptText = optText.replace(/\[\/?BOLD\]/gi, '').trim().toLowerCase();
+          const cleanOptText = stripTags(optText).toLowerCase();
           if(cleanOptText === ansVal || ansVal.startsWith(L.toLowerCase() + '.')){
             matchedLetter = L;
             break;
@@ -342,7 +354,7 @@ function parseQuestions(rawText){
   const valid = [];
   const invalid = [];
   rawQuestions.forEach((rq, idx) => {
-    // Check if options have [BOLD] answers!
+    // 1. Check for explicit [BOLD] tags
     const boldLetters = [];
     Object.keys(rq.options).forEach(L => {
       if(/\[BOLD\]/i.test(rq.options[L])){
@@ -356,10 +368,35 @@ function parseQuestions(rawText){
       }
     }
 
-    // Clean [BOLD] tags
-    rq.textLines = rq.textLines.map(l => cleanBullets(l.replace(/\[\/?BOLD\]/gi, '')));
+    // 2. Check for distinct font IDs (minority font detection)
+    if(!rq.inlineAnswer){
+      const optionFontCounts = {};
+      const optionFonts = {};
+      Object.keys(rq.options).forEach(L => {
+        const text = rq.options[L];
+        const fontMatch = text.match(/\[FONT\:([^\]]+)\]/);
+        if(fontMatch){
+          const fontName = fontMatch[1];
+          optionFonts[L] = fontName;
+          optionFontCounts[fontName] = (optionFontCounts[fontName] || 0) + 1;
+        }
+      });
+      const fontEntries = Object.entries(optionFontCounts);
+      if(fontEntries.length === 2){
+        const [fontA, countA] = fontEntries[0];
+        const [fontB, countB] = fontEntries[1];
+        if(countA === 1 && countB > 1){
+          rq.inlineAnswer = Object.keys(optionFonts).find(L => optionFonts[L] === fontA);
+        } else if(countB === 1 && countA > 1){
+          rq.inlineAnswer = Object.keys(optionFonts).find(L => optionFonts[L] === fontB);
+        }
+      }
+    }
+
+    // Clean tags
+    rq.textLines = rq.textLines.map(l => cleanBullets(stripTags(l)));
     Object.keys(rq.options).forEach(L => {
-      rq.options[L] = cleanBullets(rq.options[L].replace(/\[\/?BOLD\]/gi, ''));
+      rq.options[L] = cleanBullets(stripTags(rq.options[L]));
     });
 
     // Post-process options to clean out any remaining embedded answer text
