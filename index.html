@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QUIZMORPH — PDF to Interactive Quiz</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+  </head>
+  <body>
+    <div class="monitor" id="monitor">
+      <div class="titlebar">
+        <div class="dots">
+          <span class="dot-r"></span><span class="dot-y"></span
+          ><span class="dot-g"></span>
+        </div>
+        <div class="proc">QUIZMORPH.EXE<span class="cursor"></span></div>
+      </div>
+      <div class="screen-frame">
+        <div class="status-strip">
+          <span id="statusLeft">PRIVACY-FIRST · NO ACCOUNT · NO DATABASE</span>
+          <button class="settings-btn" id="settingsBtn">⚙ SETTINGS</button>
+        </div>
+        <div class="content" id="app"></div>
+      </div>
+      <div class="footer-note">
+        QUIZMORPH · PDF → QUIZ ENGINE · Privacy First • No Account • No Saved
+        History
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
