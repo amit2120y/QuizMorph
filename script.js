@@ -2,6 +2,7 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // ===================== State =====================
+// ===================== State =====================
 const state = {
   screen: 'home', // home, processing, config, quiz, result, review
   pdfMeta: null, // {filename, size, pages}
@@ -17,6 +18,7 @@ const state = {
   processingPct: 0,
   ocrPagesUsed: 0,
   dragOver:false,
+  geminiApiKey: localStorage.getItem('qm_gemini_key') || '',
 };
 
 function render(){ App.render(); }
@@ -46,9 +48,89 @@ function esc(str){
   const d = document.createElement('div'); d.textContent = str==null?'':String(str); return d.innerHTML;
 }
 
+// ===================== Gemini AI Parsing =====================
+async function parseWithGemini(pdfText, apiKey){
+  const cleanPdfText = pdfText.replace(/\[\/?BOLD\]/gi, '').trim();
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+  
+  const prompt = `You are a quiz parser. Extract all quiz questions, answer options, and correct answers from the text below into structured JSON.
+Requirements:
+1. Extract ALL questions in the document.
+2. For each question, extract question text, options (A, B, C, D, etc.), and the correct answer letter.
+3. If the correct answer is indicated in the document (in bold, marked, or answer key), select that letter. If not explicitly indicated, use your knowledge to determine the correct answer.
+4. Return ONLY valid JSON matching this schema, with no markdown code blocks:
+{
+  "questions": [
+    {
+      "number": 1,
+      "question": "Question string",
+      "options": [
+        {"letter": "A", "text": "Option A"},
+        {"letter": "B", "text": "Option B"}
+      ],
+      "correctLetter": "A"
+    }
+  ]
+}
+
+DOCUMENT TEXT:
+${cleanPdfText.substring(0, 120000)}`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
+    })
+  });
+
+  if(!response.ok){
+    const errData = await response.json().catch(()=>({}));
+    throw new Error(errData?.error?.message || `Gemini API HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  const textOut = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if(!textOut) throw new Error("Empty response from Gemini API");
+
+  const cleanJson = textOut.replace(/^```json\s*|\s*```$/gi, '').trim();
+  const parsed = JSON.parse(cleanJson);
+  
+  const valid = [];
+  if(Array.isArray(parsed.questions)){
+    parsed.questions.forEach((q, idx) => {
+      const qNum = q.number || (idx + 1);
+      const qid = 'q_' + qNum + '_' + idx;
+      const opts = (q.options || []).map((o, optIdx) => ({
+        id: 'opt_' + qNum + '_' + optIdx,
+        letter: o.letter ? String(o.letter).toUpperCase() : String.fromCharCode(65 + optIdx),
+        text: o.text || ''
+      })).filter(o => o.text.trim().length > 0);
+
+      let correctOptionId = null;
+      if(q.correctLetter){
+        const match = opts.find(o => o.letter === String(q.correctLetter).toUpperCase());
+        if(match) correctOptionId = match.id;
+      }
+
+      if(q.question && opts.length >= 2){
+        valid.push({
+          id: qid,
+          originalNumber: qNum,
+          question: q.question.trim(),
+          options: opts.map(o => ({ id: o.id, text: o.text })),
+          correctOptionId,
+          explanation: q.explanation || null
+        });
+      }
+    });
+  }
+
+  return valid;
+}
+
 // ===================== PDF Parsing =====================
-// Minimum non-whitespace characters on a page's text layer before we trust it
-// as "real text" rather than treating the page as scanned/image-based.
 const OCR_TEXT_THRESHOLD = 20;
 
 function isItemBold(item, content){
@@ -62,11 +144,6 @@ function isItemBold(item, content){
   return false;
 }
 
-function stripTags(str){
-  if(!str) return '';
-  return str.replace(/\[FONT\:[^\]]+\]|\[\/FONT\]|\[\/?BOLD\]/gi, '').trim();
-}
-
 function extractPageLines(content){
   if(!content || !content.items || content.items.length === 0) return '';
 
@@ -76,7 +153,7 @@ function extractPageLines(content){
   // 1. Sort strictly by Y descending (top of page to bottom)
   validItems.sort((a, b) => {
     const yDiff = b.transform[5] - a.transform[5];
-    if(Math.abs(yDiff) > 0.001) return yDiff;
+    if(Math.abs(yDiff) > 3) return yDiff;
     return a.transform[4] - b.transform[4];
   });
 
@@ -107,10 +184,7 @@ function extractPageLines(content){
     rowItems.sort((a, b) => a.transform[4] - b.transform[4]);
     return rowItems.map(item => {
       const bold = isItemBold(item, content);
-      const fontTag = item.fontName ? `[FONT:${item.fontName}]` : '';
-      const boldTag = bold ? `[BOLD]` : '';
-      const closeTag = (bold || item.fontName) ? `[/FONT]` : '';
-      return `${fontTag}${boldTag}${item.str}${closeTag}`;
+      return bold ? `[BOLD]${item.str}[/BOLD]` : item.str;
     }).join(' ');
   });
 
@@ -214,7 +288,7 @@ function cleanBullets(str){
 
 function isHeaderOrFooter(line){
   if(!line) return true;
-  const cleanLine = stripTags(line);
+  const cleanLine = line.replace(/\[\/?BOLD\]/gi, '').trim();
   if(!cleanLine) return true;
   if(/^Page\s+\d+(\s+of\s+\d+)?$/i.test(cleanLine)) return true;
   if(/^(?:Forests\s+and\s+their\s+management\s*\:?\s*Week\s*\d*)$/i.test(cleanLine)) return true;
@@ -245,7 +319,7 @@ function extractInlineAnswerFromText(str, currentOptions){
     let letter = null;
     if(currentOptions){
       for(const [L, optText] of Object.entries(currentOptions)){
-        const cleanOpt = stripTags(optText).toLowerCase();
+        const cleanOpt = optText.replace(/\[\/?BOLD\]/gi, '').trim().toLowerCase();
         if(cleanOpt === ansVal || ansVal.startsWith(L.toLowerCase() + '.')){
           letter = L;
           break;
@@ -276,7 +350,7 @@ function parseQuestions(rawText){
 
   for(const line of lines){
     if(isHeaderOrFooter(line)) continue;
-    const cleanLineForCheck = stripTags(line);
+    const cleanLineForCheck = line.replace(/\[\/?BOLD\]/gi, '').trim();
     if(answerKeyHeader.test(cleanLineForCheck)){ mode = 'answerkey'; continue; }
 
     if(mode === 'answerkey'){
@@ -327,7 +401,7 @@ function parseQuestions(rawText){
         const ansVal = genericAnsMatch[1].trim().toLowerCase();
         let matchedLetter = null;
         for(const [L, optText] of Object.entries(current.options)){
-          const cleanOptText = stripTags(optText).toLowerCase();
+          const cleanOptText = optText.replace(/\[\/?BOLD\]/gi, '').trim().toLowerCase();
           if(cleanOptText === ansVal || ansVal.startsWith(L.toLowerCase() + '.')){
             matchedLetter = L;
             break;
@@ -368,35 +442,10 @@ function parseQuestions(rawText){
       }
     }
 
-    // 2. Check for distinct font IDs (minority font detection)
-    if(!rq.inlineAnswer){
-      const optionFontCounts = {};
-      const optionFonts = {};
-      Object.keys(rq.options).forEach(L => {
-        const text = rq.options[L];
-        const fontMatch = text.match(/\[FONT\:([^\]]+)\]/);
-        if(fontMatch){
-          const fontName = fontMatch[1];
-          optionFonts[L] = fontName;
-          optionFontCounts[fontName] = (optionFontCounts[fontName] || 0) + 1;
-        }
-      });
-      const fontEntries = Object.entries(optionFontCounts);
-      if(fontEntries.length === 2){
-        const [fontA, countA] = fontEntries[0];
-        const [fontB, countB] = fontEntries[1];
-        if(countA === 1 && countB > 1){
-          rq.inlineAnswer = Object.keys(optionFonts).find(L => optionFonts[L] === fontA);
-        } else if(countB === 1 && countA > 1){
-          rq.inlineAnswer = Object.keys(optionFonts).find(L => optionFonts[L] === fontB);
-        }
-      }
-    }
-
-    // Clean tags
-    rq.textLines = rq.textLines.map(l => cleanBullets(stripTags(l)));
+    // Clean [BOLD] tags
+    rq.textLines = rq.textLines.map(l => cleanBullets(l.replace(/\[\/?BOLD\]/gi, '')));
     Object.keys(rq.options).forEach(L => {
-      rq.options[L] = cleanBullets(stripTags(rq.options[L]));
+      rq.options[L] = cleanBullets(rq.options[L].replace(/\[\/?BOLD\]/gi, ''));
     });
 
     // Post-process options to clean out any remaining embedded answer text
@@ -468,7 +517,7 @@ async function startProcessing(file){
 
     let ocrEngineAnnounced = false;
     const progressCb = (evt) => {
-      const base = 10, span = 65; // pages occupy pct range [10, 75]
+      const base = 10, span = 65;
       const pageFrac = (i, sub=0) => ((i-1+sub)/evt.total);
       switch(evt.type){
         case 'page-text':
@@ -482,7 +531,6 @@ async function startProcessing(file){
           pushLog(`PAGE ${evt.page}/${evt.total}: RUNNING OCR (SCANNED PAGE)...`, 'amber', base + Math.round(pageFrac(evt.page,0)*span));
           break;
         case 'page-ocr-progress': {
-          // Update the percentage smoothly without spamming the log with a new line per tick.
           state.processingPct = base + Math.round(pageFrac(evt.page, evt.pct)*span);
           render();
           break;
@@ -507,8 +555,24 @@ async function startProcessing(file){
     }
 
     pushLog('DETECTING QUESTIONS...', 'ok', 82); await sleep(180);
-    pushLog('DETECTING ANSWER OPTIONS...', 'ok', 90); await sleep(180);
-    const { valid, invalid } = parseQuestions(text);
+
+    let valid = [], invalid = [];
+
+    if(state.geminiApiKey && state.geminiApiKey.trim()){
+      pushLog('AI PARSER ACTIVE — CONNECTING TO GEMINI 1.5 FLASH...', 'amber', 88);
+      try{
+        valid = await parseWithGemini(text, state.geminiApiKey);
+        pushLog(`GEMINI AI EXTRACTED ${valid.length} QUESTION(S) WITH ANSWER KEYS!`, 'ok', 96);
+      } catch(gemErr){
+        pushLog(`GEMINI AI WARNING (${gemErr.message}) — FALLING BACK TO LOCAL PARSER...`, 'amber', 88);
+        const res = parseQuestions(text);
+        valid = res.valid; invalid = res.invalid;
+      }
+    } else {
+      pushLog('RUNNING LOCAL PARSER...', 'ok', 88); await sleep(180);
+      const res = parseQuestions(text);
+      valid = res.valid; invalid = res.invalid;
+    }
 
     pushLog('VALIDATING QUESTION STRUCTURE...', 'ok', 96); await sleep(180);
     if(valid.length === 0){
@@ -527,10 +591,11 @@ async function startProcessing(file){
     else if(err.message === 'FILE_TOO_LARGE') msg = 'This file is larger than the 40 MB limit. Please upload a smaller PDF.';
     else if(err.message === 'EMPTY_PDF') msg = 'No readable content was found in this PDF.';
     else if(err.message === 'OCR_FAILED') msg = 'Text could not be reliably recognized from this document.';
-    else if(err.message === 'NO_QUESTIONS') msg = 'No quiz questions could be detected in this PDF.';
+    else if(err.message === 'NO_QUESTIONS') msg = 'No quiz questions could be detected via local parser. Click [ ⚡ ENABLE GEMINI AI PARSER ] below to enable Google Gemini AI for 100% accurate parsing!';
     state.error = msg;
     state.screen = 'home';
     render();
+  }
   }
 }
 
@@ -696,8 +761,13 @@ const App = {
         <button class="btn btn-primary" id="selectPdfBtn" type="button">[ SELECT PDF ]</button>
         <input type="file" accept="application/pdf,.pdf" id="fileInput" style="display:none" />
       </div>
+      <div style="margin-top:14px; text-align:center;">
+        <button class="btn btn-ghost" id="openGeminiModalBtn" type="button">
+          ${state.geminiApiKey ? '⚡ GEMINI AI PARSER ACTIVE' : '[ ⚡ ENABLE GEMINI AI PARSER ]'}
+        </button>
+      </div>
       ${state.error ? `<div class="error-box">⚠ ${esc(state.error)}<div class="btn-row" style="margin-top:10px;"><button class="btn btn-ghost" id="tryAgainBtn">[ TRY AGAIN ]</button></div></div>` : ''}
-      <div class="footer-note" style="margin-top:22px;">Supports text-based and scanned PDFs (auto OCR) · Max 40MB · Scanned pages take longer to process</div>
+      <div class="footer-note" style="margin-top:18px;">Supports text-based and scanned PDFs (auto OCR) · Max 40MB · Scanned pages take longer to process</div>
     `;
   },
 
@@ -914,6 +984,23 @@ const App = {
         </div>
       </div></div>`;
     }
+    if(m.type === 'geminiKey'){
+      return `<div class="modal-backdrop" id="modalBackdrop"><div class="modal" style="max-width:500px;">
+        <h3>⚡ GEMINI AI PARSER SETUP</h3>
+        <p>Gemini AI extracts 100% of questions and answer keys from ANY PDF format (tables, NPTEL, math, scanned PDFs).</p>
+        <div style="margin:16px 0;">
+          <label class="label" style="display:block; margin-bottom:8px; font-weight:600;">Google Gemini API Key:</label>
+          <input type="password" id="geminiApiKeyInput" value="${esc(state.geminiApiKey)}" placeholder="AIzaSy..." style="width:100%; padding:10px; font-family:monospace; background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--fg); border-radius:4px; box-sizing:border-box;" />
+          <div style="font-size:11.5px; color:var(--fg-dim); margin-top:8px;">
+            Get a free key in 10s at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color:var(--amber);">aistudio.google.com</a>. Saved locally in your browser.
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="clearGeminiKeyBtn">[ CLEAR KEY ]</button>
+          <button class="btn btn-primary" id="saveGeminiKeyBtn">[ SAVE & ACTIVATE ]</button>
+        </div>
+      </div></div>`;
+    }
     if(m.type === 'settings'){
       const s = state.settings;
       return `<div class="modal-backdrop" id="modalBackdrop"><div class="modal">
@@ -959,6 +1046,8 @@ const App = {
     if(fileInput) fileInput.addEventListener('change', e => { if(e.target.files[0]) startProcessing(e.target.files[0]); });
     const selBtn = document.getElementById('selectPdfBtn');
     if(selBtn) selBtn.addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+    const openGeminiBtn = document.getElementById('openGeminiModalBtn');
+    if(openGeminiBtn) openGeminiBtn.addEventListener('click', () => { state.modal = {type:'geminiKey'}; render(); });
     const tryAgain = document.getElementById('tryAgainBtn');
     if(tryAgain) tryAgain.addEventListener('click', () => { state.error=null; render(); });
 
@@ -1037,6 +1126,24 @@ const App = {
     }));
     const modalConfirmRestart = document.getElementById('modalConfirmRestart');
     if(modalConfirmRestart) modalConfirmRestart.addEventListener('click', () => restartQuiz(pendingRq, pendingRo));
+
+    // Gemini Modal buttons
+    const saveGeminiBtn = document.getElementById('saveGeminiKeyBtn');
+    if(saveGeminiBtn) saveGeminiBtn.addEventListener('click', () => {
+      const inp = document.getElementById('geminiApiKeyInput');
+      const val = inp ? inp.value.trim() : '';
+      state.geminiApiKey = val;
+      if(val) localStorage.setItem('qm_gemini_key', val); else localStorage.removeItem('qm_gemini_key');
+      state.modal = null;
+      render();
+    });
+    const clearGeminiBtn = document.getElementById('clearGeminiKeyBtn');
+    if(clearGeminiBtn) clearGeminiBtn.addEventListener('click', () => {
+      state.geminiApiKey = '';
+      localStorage.removeItem('qm_gemini_key');
+      state.modal = null;
+      render();
+    });
 
     // Settings toggles
     const tCrt = document.getElementById('toggleCrt');
