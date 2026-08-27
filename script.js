@@ -606,7 +606,6 @@ async function startProcessing(file){
     state.screen = 'home';
     render();
   }
-  }
 }
 
 // ===================== Quiz lifecycle =====================
