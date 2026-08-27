@@ -348,7 +348,7 @@ function parseQuestions(rawText){
   const lines = processedText.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   
   const qStart = /^(?:(?:Question|Q)\s*(\d{1,3})[\.\)\:]?|(\d{1,3})[\s\|\/\-\.]+(\d{1,3})[\.\)\:]?|(\d{1,3})[\.\)\:]|(\d{1,3}))\s+(.*)/i;
-  const optStart = /^(?:[•\*\-\s]*)(?:\(|\[)?([A-Da-d]|[1-4])[\.\)\:\]\-\s]\s*(.*)/;
+  const optStart = /^(?:[•\*\-\s]*)(?:\(|\[)?([A-Da-d]|(?:\([1-4]\)|\[[1-4]\]))[\.\)\:\]\-\s]\s*(.*)/;
   const answerKeyHeader = /^(?:ANSWER\s*KEY|ANSWERS|SOLUTIONS|ANSWER\s*SHEET)/i;
 
   const rawQuestions = [];
@@ -375,7 +375,15 @@ function parseQuestions(rawText){
     const om = line.match(optStart);
     const ansLineMatch = line.match(/^(?:Answer|Ans|Correct\s*(?:Answer|Option))[\s\:\-\.]*(?:option\s*)?\(?([A-Da-d])\)?(?:\s*[\.\:\-\)].*|$)/i);
 
-    if(qm && !om){
+    const isNewQuestion = qm && (
+      !current ||
+      Object.keys(current.options).length >= 2 ||
+      /^(?:Question|Q)\b/i.test(cleanLineForCheck) ||
+      /^\d{1,3}[\s\|\/\-\.]+\d{1,3}/.test(cleanLineForCheck) ||
+      (!om && /^\d{1,3}[\.\)\:]/.test(cleanLineForCheck))
+    );
+
+    if(isNewQuestion){
       if(current) rawQuestions.push(current);
       const qNum = parseInt(qm[1] || qm[3] || qm[4] || qm[5], 10) || qCounter;
       const qText = qm[6];
@@ -383,7 +391,7 @@ function parseQuestions(rawText){
       pendingTextLines = [];
       qCounter = qNum + 1;
     } else if(om){
-      let letter = om[1].toUpperCase();
+      let letter = om[1].replace(/[\(\)\[\]]/g,'').toUpperCase();
       if(letter==='1') letter='A';
       else if(letter==='2') letter='B';
       else if(letter==='3') letter='C';
