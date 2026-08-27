@@ -562,14 +562,57 @@ function exportQuizJson(){
   URL.revokeObjectURL(url);
 }
 
+function normalizeJsonQuestions(parsed){
+  if(!parsed || !Array.isArray(parsed.questions)) return null;
+  const valid = [];
+  parsed.questions.forEach((q, idx) => {
+    const qNum = q.originalNumber || q.question_number || q.number || (idx + 1);
+    const qText = (q.question || q.question_text || '').trim();
+    let opts = [];
+
+    if(Array.isArray(q.options)){
+      opts = q.options.map((o, optIdx) => ({
+        id: o.id || 'opt_' + qNum + '_' + optIdx,
+        text: (typeof o === 'string' ? o : o.text || '').trim()
+      }));
+    } else if(typeof q.options_text === 'string'){
+      const lines = q.options_text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+      opts = lines.map((l, optIdx) => {
+        const clean = l.replace(/^(?:[•\*\-\s]*)(?:\(|\[)?([A-Da-d]|[1-4])[\.\)\:\]\-\s]\s*/, '').trim();
+        return { id: 'opt_' + qNum + '_' + optIdx, text: clean || l };
+      });
+    }
+
+    let correctOptionId = q.correctOptionId || null;
+    if(!correctOptionId && q.correctLetter && opts.length > 0){
+      const matchIdx = String(q.correctLetter).toUpperCase().charCodeAt(0) - 65;
+      if(opts[matchIdx]) correctOptionId = opts[matchIdx].id;
+    }
+
+    if(qText && opts.length >= 2){
+      valid.push({
+        id: q.id || 'q_' + qNum + '_' + idx,
+        originalNumber: qNum,
+        question: qText,
+        options: opts,
+        correctOptionId,
+        explanation: q.explanation || null
+      });
+    }
+  });
+  return valid;
+}
+
 async function loadPresetQuiz(jsonPath, title){
   try{
     const res = await fetch(jsonPath);
     if(!res.ok) throw new Error("Failed to load preset");
     const data = await res.json();
-    state.questions = data.questions;
+    const valid = normalizeJsonQuestions(data);
+    if(!valid || valid.length === 0) throw new Error("Invalid preset data");
+    state.questions = valid;
     state.invalidQuestions = [];
-    state.pdfMeta = { filename: title || data.title || "Preset Quiz", pages: 1, size: 0 };
+    state.pdfMeta = { filename: title || data.title || data.document_title || "Preset Quiz", pages: 1, size: 0 };
     state.ocrPagesUsed = 0;
     state.screen = 'config';
     render();
@@ -587,17 +630,19 @@ async function startProcessing(file){
     try {
       const contentText = await file.text();
       const parsed = JSON.parse(contentText);
-      if(Array.isArray(parsed.questions) && parsed.questions.length > 0){
-        state.questions = parsed.questions;
+      const valid = normalizeJsonQuestions(parsed);
+      if(valid && valid.length > 0){
+        state.questions = valid;
         state.invalidQuestions = [];
-        state.pdfMeta = { filename: parsed.title || file.name, pages: 1, size: file.size };
+        state.pdfMeta = { filename: parsed.title || parsed.document_title || file.name, pages: 1, size: file.size };
         state.ocrPagesUsed = 0;
         state.screen = 'config';
         render();
         return;
       }
+      throw new Error("EMPTY_JSON");
     } catch(jErr){
-      state.error = "Invalid JSON quiz file format.";
+      state.error = "Invalid JSON quiz file format. Please check JSON syntax.";
       render();
       return;
     }

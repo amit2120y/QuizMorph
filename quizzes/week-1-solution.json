@@ -1,125 +1,125 @@
 {
-  "title": "Forests and Their Management - Week 1",
+  "title": "Forests and their management: Week 1",
   "questions": [
     {
-      "id": "q_1_0",
+      "id": "q_1_1",
       "originalNumber": 1,
       "question": "Which of these is not a consumptive value?",
       "options": [
-        { "id": "opt_1_0", "text": "timber" },
-        { "id": "opt_1_1", "text": "firewood" },
-        { "id": "opt_1_2", "text": "non-timber forest products" },
-        { "id": "opt_1_3", "text": "education" }
+        { "id": "opt_1_a", "text": "timber" },
+        { "id": "opt_1_b", "text": "firewood" },
+        { "id": "opt_1_c", "text": "non-timber forest products" },
+        { "id": "opt_1_d", "text": "education" }
       ],
-      "correctOptionId": "opt_1_3"
+      "correctOptionId": "opt_1_d"
     },
     {
-      "id": "q_2_1",
+      "id": "q_1_2",
       "originalNumber": 2,
       "question": "Tropical moist forests do not include",
       "options": [
-        { "id": "opt_2_0", "text": "tropical wet evergreen forests" },
-        { "id": "opt_2_1", "text": "tropical semi-evergreen forests" },
-        { "id": "opt_2_2", "text": "moist deciduous forests" },
-        { "id": "opt_2_3", "text": "littoral and swamp forests" }
+        { "id": "opt_2_a", "text": "broadleaved forests" },
+        { "id": "opt_2_b", "text": "wet evergreen forests" },
+        { "id": "opt_2_c", "text": "semi-evergreen forests" },
+        { "id": "opt_2_d", "text": "moist deciduous forests" }
       ],
-      "correctOptionId": "opt_2_2"
+      "correctOptionId": "opt_2_d"
     },
     {
-      "id": "q_3_2",
+      "id": "q_1_3",
       "originalNumber": 3,
-      "question": "Montane sub - tropical forests do not include",
+      "question": "Montane sub-tropical forests do not include",
       "options": [
-        { "id": "opt_3_0", "text": "montane wet temperate forests" },
-        { "id": "opt_3_1", "text": "Himalayan moist temperate forests" },
-        { "id": "opt_3_2", "text": "Himalayan dry temperate forests" },
-        { "id": "opt_3_3", "text": "dry evergreen forests" }
+        { "id": "opt_3_a", "text": "broadleaved forests" },
+        { "id": "opt_3_b", "text": "pine forests" },
+        { "id": "opt_3_c", "text": "semi-evergreen forests" },
+        { "id": "opt_3_d", "text": "dry evergreen forests" }
       ],
-      "correctOptionId": "opt_3_3"
+      "correctOptionId": "opt_3_d"
     },
     {
-      "id": "q_4_3",
+      "id": "q_1_4",
       "originalNumber": 4,
-      "question": "Which of these is non-consumptive value?",
+      "question": "According to the Supreme Court, the word forest must be understood according to its",
       "options": [
-        { "id": "opt_4_0", "text": "timber" },
-        { "id": "opt_4_1", "text": "firewood" },
-        { "id": "opt_4_2", "text": "education" },
-        { "id": "opt_4_3", "text": "non-timber forest products" }
+        { "id": "opt_4_a", "text": "biological meaning" },
+        { "id": "opt_4_b", "text": "ecological meaning" },
+        { "id": "opt_4_c", "text": "silvicultural meaning" },
+        { "id": "opt_4_d", "text": "dictionary meaning" }
       ],
-      "correctOptionId": "opt_4_2"
+      "correctOptionId": "opt_4_d"
     },
     {
-      "id": "q_5_4",
+      "id": "q_1_5",
       "originalNumber": 5,
-      "question": "Which of these is an option value?",
+      "question": "Which of these is not a use value?",
       "options": [
-        { "id": "opt_5_0", "text": "potential future drugs" },
-        { "id": "opt_5_1", "text": "timber" },
-        { "id": "opt_5_2", "text": "education" },
-        { "id": "opt_5_3", "text": "firewood" }
+        { "id": "opt_5_a", "text": "direct value" },
+        { "id": "opt_5_b", "text": "indirect value" },
+        { "id": "opt_5_c", "text": "option value" },
+        { "id": "opt_5_d", "text": "existence value" }
       ],
-      "correctOptionId": "opt_5_0"
+      "correctOptionId": "opt_5_d"
     },
     {
-      "id": "q_6_5",
+      "id": "q_1_6",
       "originalNumber": 6,
-      "question": "Which of these is an existence value?",
+      "question": "The value of leaving use and non-use values for offspring's or future generations is called",
       "options": [
-        { "id": "opt_6_0", "text": "timber" },
-        { "id": "opt_6_1", "text": "knowing that tigers exist in wild" },
-        { "id": "opt_6_2", "text": "education" },
-        { "id": "opt_6_3", "text": "firewood" }
+        { "id": "opt_6_a", "text": "altruistic value" },
+        { "id": "opt_6_b", "text": "bequest value" },
+        { "id": "opt_6_c", "text": "existence value" },
+        { "id": "opt_6_d", "text": "option value" }
       ],
-      "correctOptionId": "opt_6_1"
+      "correctOptionId": "opt_6_b"
     },
     {
-      "id": "q_7_6",
+      "id": "q_1_7",
       "originalNumber": 7,
-      "question": "The Champion and Seth classification system was published in",
+      "question": "Which of these is not a non-use value?",
       "options": [
-        { "id": "opt_7_0", "text": "1936" },
-        { "id": "opt_7_1", "text": "1968" },
-        { "id": "opt_7_2", "text": "1988" },
-        { "id": "opt_7_3", "text": "1998" }
+        { "id": "opt_7_a", "text": "direct value" },
+        { "id": "opt_7_b", "text": "existence value" },
+        { "id": "opt_7_c", "text": "altruistic value" },
+        { "id": "opt_7_d", "text": "bequest value" }
       ],
-      "correctOptionId": "opt_7_1"
+      "correctOptionId": "opt_7_a"
     },
     {
-      "id": "q_8_7",
+      "id": "q_1_8",
       "originalNumber": 8,
-      "question": "Sub-alpine forests are classified under major group",
+      "question": "According to the Supreme Court, the term forest land includes",
       "options": [
-        { "id": "opt_8_0", "text": "I" },
-        { "id": "opt_8_1", "text": "II" },
-        { "id": "opt_8_2", "text": "III" },
-        { "id": "opt_8_3", "text": "V" }
+        { "id": "opt_8_a", "text": "some area recorded as forest in the Government record according to ownership" },
+        { "id": "opt_8_b", "text": "any area recorded as forest in the Government record according to ownership" },
+        { "id": "opt_8_c", "text": "some area recorded as forest in the Government record irrespective of ownership" },
+        { "id": "opt_8_d", "text": "any area recorded as forest in the Government record irrespective of ownership" }
       ],
-      "correctOptionId": "opt_8_3"
+      "correctOptionId": "opt_8_d"
     },
     {
-      "id": "q_9_8",
+      "id": "q_1_9",
       "originalNumber": 9,
-      "question": "Alpine scrub is classified under major group",
+      "question": "Which of these is not a forest type found in India?",
       "options": [
-        { "id": "opt_9_0", "text": "III" },
-        { "id": "opt_9_1", "text": "IV" },
-        { "id": "opt_9_2", "text": "V" },
-        { "id": "opt_9_3", "text": "VI" }
+        { "id": "opt_9_a", "text": "Mediterranean dry" },
+        { "id": "opt_9_b", "text": "Tropical dry" },
+        { "id": "opt_9_c", "text": "Montane temperate" },
+        { "id": "opt_9_d", "text": "Alpine" }
       ],
-      "correctOptionId": "opt_9_3"
+      "correctOptionId": "opt_9_a"
     },
     {
-      "id": "q_10_9",
+      "id": "q_1_10",
       "originalNumber": 10,
-      "question": "Which of these is not an indirect use value?",
+      "question": "The term 'forest' originates from",
       "options": [
-        { "id": "opt_10_0", "text": "soil prevention" },
-        { "id": "opt_10_1", "text": "flood control" },
-        { "id": "opt_10_2", "text": "firewood" },
-        { "id": "opt_10_3", "text": "carbon sequestration" }
+        { "id": "opt_10_a", "text": "Latin foris meaning outside" },
+        { "id": "opt_10_b", "text": "Greek foris meaning outside" },
+        { "id": "opt_10_c", "text": "Latin foris meaning trees" },
+        { "id": "opt_10_d", "text": "Greek foris meaning trees" }
       ],
-      "correctOptionId": "opt_10_2"
+      "correctOptionId": "opt_10_a"
     }
   ]
 }
