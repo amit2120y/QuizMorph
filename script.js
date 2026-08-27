@@ -154,6 +154,11 @@ function isItemBold(item, content){
   return false;
 }
 
+function stripTags(str){
+  if(!str) return '';
+  return str.replace(/\[FONT\:[^\]]+\]|\[\/FONT\]|\[\/?BOLD\]/gi, '').trim();
+}
+
 function extractPageLines(content){
   if(!content || !content.items || content.items.length === 0) return '';
 
@@ -194,7 +199,10 @@ function extractPageLines(content){
     rowItems.sort((a, b) => a.transform[4] - b.transform[4]);
     return rowItems.map(item => {
       const bold = isItemBold(item, content);
-      return bold ? `[BOLD]${item.str}[/BOLD]` : item.str;
+      const fontTag = item.fontName ? `[FONT:${item.fontName}]` : '';
+      const boldTag = bold ? `[BOLD]` : '';
+      const closeTag = (bold || item.fontName) ? `[/FONT]` : '';
+      return `${fontTag}${boldTag}${item.str}${closeTag}`;
     }).join(' ');
   });
 
@@ -460,10 +468,35 @@ function parseQuestions(rawText){
       }
     }
 
-    // Clean [BOLD] tags
-    rq.textLines = rq.textLines.map(l => cleanBullets(l.replace(/\[\/?BOLD\]/gi, '')));
+    // 2. Check for distinct font IDs (minority font detection for bold answers)
+    if(!rq.inlineAnswer){
+      const optionFontCounts = {};
+      const optionFonts = {};
+      Object.keys(rq.options).forEach(L => {
+        const text = rq.options[L];
+        const fontMatch = text.match(/\[FONT\:([^\]]+)\]/);
+        if(fontMatch){
+          const fontName = fontMatch[1];
+          optionFonts[L] = fontName;
+          optionFontCounts[fontName] = (optionFontCounts[fontName] || 0) + 1;
+        }
+      });
+      const fontEntries = Object.entries(optionFontCounts);
+      if(fontEntries.length === 2){
+        const [fontA, countA] = fontEntries[0];
+        const [fontB, countB] = fontEntries[1];
+        if(countA === 1 && countB > 1){
+          rq.inlineAnswer = Object.keys(optionFonts).find(L => optionFonts[L] === fontA);
+        } else if(countB === 1 && countA > 1){
+          rq.inlineAnswer = Object.keys(optionFonts).find(L => optionFonts[L] === fontB);
+        }
+      }
+    }
+
+    // Clean all tags
+    rq.textLines = rq.textLines.map(l => cleanBullets(stripTags(l)));
     Object.keys(rq.options).forEach(L => {
-      rq.options[L] = cleanBullets(rq.options[L].replace(/\[\/?BOLD\]/gi, ''));
+      rq.options[L] = cleanBullets(stripTags(rq.options[L]));
     });
 
     // Post-process options to clean out any remaining embedded answer text
