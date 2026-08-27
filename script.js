@@ -51,9 +51,14 @@ function esc(str){
 // ===================== Gemini AI Parsing =====================
 async function parseWithGemini(pdfText, apiKey){
   const cleanPdfText = pdfText.replace(/\[\/?BOLD\]/gi, '').trim();
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
-  
-  const prompt = `You are a quiz parser. Extract all quiz questions, answer options, and correct answers from the text below into structured JSON.
+  const models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+  let lastError = null;
+
+  for(const model of models){
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+      
+      const prompt = `You are a quiz parser. Extract all quiz questions, answer options, and correct answers from the text below into structured JSON.
 Requirements:
 1. Extract ALL questions in the document.
 2. For each question, extract question text, options (A, B, C, D, etc.), and the correct answer letter.
@@ -76,58 +81,63 @@ Requirements:
 DOCUMENT TEXT:
 ${cleanPdfText.substring(0, 120000)}`;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json" }
-    })
-  });
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
+      });
 
-  if(!response.ok){
-    const errData = await response.json().catch(()=>({}));
-    throw new Error(errData?.error?.message || `Gemini API HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  const textOut = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if(!textOut) throw new Error("Empty response from Gemini API");
-
-  const cleanJson = textOut.replace(/^```json\s*|\s*```$/gi, '').trim();
-  const parsed = JSON.parse(cleanJson);
-  
-  const valid = [];
-  if(Array.isArray(parsed.questions)){
-    parsed.questions.forEach((q, idx) => {
-      const qNum = q.number || (idx + 1);
-      const qid = 'q_' + qNum + '_' + idx;
-      const opts = (q.options || []).map((o, optIdx) => ({
-        id: 'opt_' + qNum + '_' + optIdx,
-        letter: o.letter ? String(o.letter).toUpperCase() : String.fromCharCode(65 + optIdx),
-        text: o.text || ''
-      })).filter(o => o.text.trim().length > 0);
-
-      let correctOptionId = null;
-      if(q.correctLetter){
-        const match = opts.find(o => o.letter === String(q.correctLetter).toUpperCase());
-        if(match) correctOptionId = match.id;
+      if(!response.ok){
+        const errData = await response.json().catch(()=>({}));
+        throw new Error(errData?.error?.message || `Gemini API HTTP ${response.status}`);
       }
 
-      if(q.question && opts.length >= 2){
-        valid.push({
-          id: qid,
-          originalNumber: qNum,
-          question: q.question.trim(),
-          options: opts.map(o => ({ id: o.id, text: o.text })),
-          correctOptionId,
-          explanation: q.explanation || null
+      const data = await response.json();
+      const textOut = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if(!textOut) throw new Error("Empty response from Gemini API");
+
+      const cleanJson = textOut.replace(/^```json\s*|\s*```$/gi, '').trim();
+      const parsed = JSON.parse(cleanJson);
+      
+      const valid = [];
+      if(Array.isArray(parsed.questions)){
+        parsed.questions.forEach((q, idx) => {
+          const qNum = q.number || (idx + 1);
+          const qid = 'q_' + qNum + '_' + idx;
+          const opts = (q.options || []).map((o, optIdx) => ({
+            id: 'opt_' + qNum + '_' + optIdx,
+            letter: o.letter ? String(o.letter).toUpperCase() : String.fromCharCode(65 + optIdx),
+            text: o.text || ''
+          })).filter(o => o.text.trim().length > 0);
+
+          let correctOptionId = null;
+          if(q.correctLetter){
+            const match = opts.find(o => o.letter === String(q.correctLetter).toUpperCase());
+            if(match) correctOptionId = match.id;
+          }
+
+          if(q.question && opts.length >= 2){
+            valid.push({
+              id: qid,
+              originalNumber: qNum,
+              question: q.question.trim(),
+              options: opts.map(o => ({ id: o.id, text: o.text })),
+              correctOptionId,
+              explanation: q.explanation || null
+            });
+          }
         });
       }
-    });
+      if(valid.length > 0) return valid;
+    } catch(err) {
+      lastError = err;
+    }
   }
 
-  return valid;
+  throw lastError || new Error("Gemini API parsing failed.");
 }
 
 // ===================== PDF Parsing =====================
