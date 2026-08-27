@@ -62,19 +62,43 @@ function isItemBold(item, content){
   return false;
 }
 
+function sortPdfItemsSpatially(items){
+  if(!items || items.length === 0) return [];
+  const tolerance = 4;
+  const sorted = items.slice().filter(item => item && item.str && item.str.trim().length > 0);
+
+  sorted.sort((a, b) => {
+    const yA = a.transform[5];
+    const yB = b.transform[5];
+    const diffY = yB - yA; // top to bottom
+    if (Math.abs(diffY) > tolerance) {
+      return diffY;
+    }
+    const xA = a.transform[4];
+    const xB = b.transform[4];
+    return xA - xB; // left to right
+  });
+
+  return sorted;
+}
+
 function extractPageLines(content){
+  const sortedItems = sortPdfItemsSpatially(content.items);
+  if(sortedItems.length === 0) return '';
+
   let lastY = null, lineText = '';
   const lines = [];
-  for(const item of content.items){
-    if(!item.str) continue;
+  const yTolerance = 4;
+
+  for(const item of sortedItems){
     const y = item.transform[5];
-    if(lastY !== null && Math.abs(y-lastY) > 3){
-      lines.push(lineText.trim());
+    if(lastY !== null && Math.abs(y - lastY) > yTolerance){
+      if(lineText.trim()) lines.push(lineText.trim());
       lineText = '';
     }
     const bold = isItemBold(item, content);
     const itemStr = bold ? `[BOLD]${item.str}[/BOLD]` : item.str;
-    lineText += itemStr + ' ';
+    lineText += (lineText ? ' ' : '') + itemStr;
     lastY = y;
   }
   if(lineText.trim()) lines.push(lineText.trim());
@@ -148,7 +172,7 @@ function preprocessPdfText(rawText){
   // 2. Insert newlines before Question markers
   text = text.replace(/([^\n])\s*(Question\s*\d{1,3}[\.\:\)]?)/gi, '$1\n$2');
   text = text.replace(/([^\n])\s*(Q\d{1,3}[\.\:\)])/gi, '$1\n$2');
-  text = text.replace(/([^\n])\s*(\b\d{1,3}[\s\|]+\d{1,3}[\.\)\:]?\s+[A-Za-z])/g, '$1\n$2');
+  text = text.replace(/([^\n])\s*(\b\d{1,3}[\s\|\/\-\.]+\d{1,3}[\.\)\:]?\s+[A-Za-z])/g, '$1\n$2');
 
   // 3. Insert newlines before Answer markers
   text = text.replace(/([^\n])\s*((?:Answer|Ans|Correct\s*(?:Answer|Option))\s*[\:\-\.])/gi, '$1\n$2');
@@ -181,11 +205,11 @@ function isHeaderOrFooter(line){
   const cleanLine = line.replace(/\[\/?BOLD\]/gi, '').trim();
   if(!cleanLine) return true;
   if(/^Page\s+\d+(\s+of\s+\d+)?$/i.test(cleanLine)) return true;
-  if(/^(?:Forests\s+and\s+|Week\s+\d+|Assignment\s+Week|\bWeek\b\s*\d+)/i.test(cleanLine)) return true;
+  if(/^(?:Forests\s+and\s+their\s+management\s*\:?\s*Week\s*\d*)$/i.test(cleanLine)) return true;
+  if(/^Week\s+\d+$/i.test(cleanLine)) return true;
   if(/^(?:The\s+)?correct\s+answer\s+is\s+(?:in\s+)?bold[\.\:]?$/i.test(cleanLine)) return true;
-  if(/^(?:Assignment\s+number|Question\s+number|Question\s+text|S\.?No\.?|Sl\.?No\.?|\bNo\b)[\s\|]*$/i.test(cleanLine)) return true;
-  if(/^(?:Assignment\s+number\s+Question\s+number\s+Question)/i.test(cleanLine)) return true;
-  if(/^Assignment\s+Question\s+Question$/i.test(cleanLine)) return true;
+  if(/^(?:Assignment\s+number|Question\s+number|Question\s+text|S\.?No\.?|Sl\.?No\.?)[\s\|]*$/i.test(cleanLine)) return true;
+  if(/^Assignment\s+(?:number\s+)?Question\s+(?:number\s+)?Question$/i.test(cleanLine)) return true;
   if(/^number\s+number$/i.test(cleanLine)) return true;
   return false;
 }
@@ -227,14 +251,16 @@ function parseQuestions(rawText){
   const processedText = preprocessPdfText(rawText);
   const lines = processedText.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   
-  const qStart = /^(?:(?:Question|Q)\s*(\d{1,3})[\.\)\:]?|(\d{1,3})[\s\|]+(\d{1,3})[\.\)\:]?|(\d{1,3})[\.\)\:]|(\d{1,3}))\s+(.*)/i;
+  const qStart = /^(?:(?:Question|Q)\s*(\d{1,3})[\.\)\:]?|(\d{1,3})[\s\|\/\-\.]+(\d{1,3})[\.\)\:]?|(\d{1,3})[\.\)\:]|(\d{1,3}))\s+(.*)/i;
   const optStart = /^(?:[•\*\-\s]*)(?:\(|\[)?([A-Da-d]|[1-4])[\.\)\:\]\-\s]\s*(.*)/;
   const answerKeyHeader = /^(?:ANSWER\s*KEY|ANSWERS|SOLUTIONS|ANSWER\s*SHEET)/i;
 
   const rawQuestions = []; // {number, textLines:[], options:{A:'',B:'',...}, inlineAnswer: null}
   let current = null;
-  let mode = 'questions'; // switches to 'answerkey' once header found
-  const answerKey = {}; // number -> letter
+  let pendingTextLines = [];
+  let qCounter = 1;
+  let mode = 'questions';
+  const answerKey = {};
 
   for(const line of lines){
     if(isHeaderOrFooter(line)) continue;
@@ -242,7 +268,6 @@ function parseQuestions(rawText){
     if(answerKeyHeader.test(cleanLineForCheck)){ mode = 'answerkey'; continue; }
 
     if(mode === 'answerkey'){
-      // lines like "1. B" or "1) B" or "1 B" or "1. B - explanation"
       const m = cleanLineForCheck.match(/^(\d{1,3})[\.\)\:]?\s*([A-Da-d])\b(.*)$/);
       if(m){
         answerKey[parseInt(m[1],10)] = m[2].toUpperCase();
@@ -256,17 +281,24 @@ function parseQuestions(rawText){
 
     if(qm && !om){
       if(current) rawQuestions.push(current);
-      const qNum = parseInt(qm[1] || qm[3] || qm[4] || qm[5], 10);
+      const qNum = parseInt(qm[1] || qm[3] || qm[4] || qm[5], 10) || qCounter;
       const qText = qm[6];
       current = { number: qNum, textLines:[qText], options:{}, inlineAnswer: null };
-    } else if(ansLineMatch && current){
-      current.inlineAnswer = ansLineMatch[1].toUpperCase();
-    } else if(om && current){
+      pendingTextLines = [];
+      qCounter = qNum + 1;
+    } else if(om){
       let letter = om[1].toUpperCase();
       if(letter==='1') letter='A';
       else if(letter==='2') letter='B';
       else if(letter==='3') letter='C';
       else if(letter==='4') letter='D';
+
+      if(!current){
+        const qText = pendingTextLines.length > 0 ? pendingTextLines.join(' ') : `Question ${qCounter}`;
+        current = { number: qCounter, textLines:[qText], options:{}, inlineAnswer: null };
+        pendingTextLines = [];
+        qCounter++;
+      }
 
       const extracted = extractInlineAnswerFromText(om[2]);
       if(extracted){
@@ -275,6 +307,8 @@ function parseQuestions(rawText){
       } else {
         current.options[letter] = om[2];
       }
+    } else if(ansLineMatch && current){
+      current.inlineAnswer = ansLineMatch[1].toUpperCase();
     } else if(current){
       const genericAnsMatch = line.match(/^(?:Answer|Ans|Correct\s*(?:Answer|Option))[\s\:\-\.]*(.*)/i);
       if(genericAnsMatch && genericAnsMatch[1]){
@@ -291,7 +325,6 @@ function parseQuestions(rawText){
           current.inlineAnswer = matchedLetter;
         }
       } else {
-        // continuation line: append to question text if no options started yet, else append to last option
         const optLetters = Object.keys(current.options);
         if(optLetters.length === 0){
           current.textLines.push(line);
@@ -300,6 +333,8 @@ function parseQuestions(rawText){
           current.options[last] += ' ' + line;
         }
       }
+    } else {
+      pendingTextLines.push(line);
     }
   }
   if(current) rawQuestions.push(current);
