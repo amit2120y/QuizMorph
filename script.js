@@ -51,16 +51,30 @@ function esc(str){
 // as "real text" rather than treating the page as scanned/image-based.
 const OCR_TEXT_THRESHOLD = 20;
 
+function isItemBold(item, content){
+  if(!item || !item.fontName) return false;
+  const style = (content && content.styles) ? content.styles[item.fontName] : null;
+  if(style){
+    if(style.isBold) return true;
+    if(style.fontFamily && /bold|heavy|black|700|800|900/i.test(style.fontFamily)) return true;
+  }
+  if(/bold|heavy|black/i.test(item.fontName)) return true;
+  return false;
+}
+
 function extractPageLines(content){
   let lastY = null, lineText = '';
   const lines = [];
   for(const item of content.items){
+    if(!item.str) continue;
     const y = item.transform[5];
-    if(lastY !== null && Math.abs(y-lastY) > 2){
+    if(lastY !== null && Math.abs(y-lastY) > 3){
       lines.push(lineText.trim());
       lineText = '';
     }
-    lineText += item.str + ' ';
+    const bold = isItemBold(item, content);
+    const itemStr = bold ? `[BOLD]${item.str}[/BOLD]` : item.str;
+    lineText += itemStr + ' ';
     lastY = y;
   }
   if(lineText.trim()) lines.push(lineText.trim());
@@ -126,13 +140,15 @@ function preprocessPdfText(rawText){
   let text = rawText;
 
   // 1. Insert newlines before Headers / Footers
-  text = text.replace(/([^\n])\s*(Forests\s+and\s+Their\s+Management[^\n]*)/gi, '$1\n$2');
+  text = text.replace(/([^\n])\s*(Forests\s+and\s+[^\n]*)/gi, '$1\n$2');
   text = text.replace(/([^\n])\s*(Week\s+\d+)/gi, '$1\n$2');
   text = text.replace(/([^\n])\s*(Page\s+\d+(?:\s+of\s+\d+)?)/gi, '$1\n$2');
+  text = text.replace(/([^\n])\s*((?:The\s+)?correct\s+answer\s+is\s+(?:in\s+)?bold)/gi, '$1\n$2');
 
-  // 2. Insert newlines before Question markers like "Question 1", "Question 2", "Q1.", "Q.1"
+  // 2. Insert newlines before Question markers
   text = text.replace(/([^\n])\s*(Question\s*\d{1,3}[\.\:\)]?)/gi, '$1\n$2');
   text = text.replace(/([^\n])\s*(Q\d{1,3}[\.\:\)])/gi, '$1\n$2');
+  text = text.replace(/([^\n])\s*(\b\d{1,3}[\s\|]+\d{1,3}[\.\)\:]?\s+[A-Za-z])/g, '$1\n$2');
 
   // 3. Insert newlines before Answer markers
   text = text.replace(/([^\n])\s*((?:Answer|Ans|Correct\s*(?:Answer|Option))\s*[\:\-\.])/gi, '$1\n$2');
@@ -146,8 +162,8 @@ function preprocessPdfText(rawText){
     if(/^(?:Answer|Ans|Correct\s*(?:Answer|Option))[\s\:\-\.]/i.test(trimmed)){
       outLines.push(trimmed);
     } else {
-      let sub = line.replace(/([^\n])\s*([•\*\-]\s*[a-d][\.\)\:]\s+)/gi, '$1\n$2');
-      sub = sub.replace(/([^\n])\s+([a-d][\.\)]\s+)/gi, '$1\n$2');
+      let sub = line.replace(/([^\n])\s*([•\*\-]\s*(?:[a-d]|[1-4])[\.\)\:]\s+)/gi, '$1\n$2');
+      sub = sub.replace(/([^\n])\s+((?:[a-d]|[1-4])[\.\)]\s+)/gi, '$1\n$2');
       sub.split('\n').forEach(l => { if(l.trim()) outLines.push(l.trim()); });
     }
   }
@@ -162,9 +178,15 @@ function cleanBullets(str){
 
 function isHeaderOrFooter(line){
   if(!line) return true;
-  const l = line.trim();
-  if(/^Page\s+\d+(\s+of\s+\d+)?$/i.test(l)) return true;
-  if(/^(?:Forests\s+and\s+Their\s+Management|Week\s+\d+)(\s*\:?\s*Week\s*\d+)?$/i.test(l)) return true;
+  const cleanLine = line.replace(/\[\/?BOLD\]/gi, '').trim();
+  if(!cleanLine) return true;
+  if(/^Page\s+\d+(\s+of\s+\d+)?$/i.test(cleanLine)) return true;
+  if(/^(?:Forests\s+and\s+|Week\s+\d+|Assignment\s+Week|\bWeek\b\s*\d+)/i.test(cleanLine)) return true;
+  if(/^(?:The\s+)?correct\s+answer\s+is\s+(?:in\s+)?bold[\.\:]?$/i.test(cleanLine)) return true;
+  if(/^(?:Assignment\s+number|Question\s+number|Question\s+text|S\.?No\.?|Sl\.?No\.?|\bNo\b)[\s\|]*$/i.test(cleanLine)) return true;
+  if(/^(?:Assignment\s+number\s+Question\s+number\s+Question)/i.test(cleanLine)) return true;
+  if(/^Assignment\s+Question\s+Question$/i.test(cleanLine)) return true;
+  if(/^number\s+number$/i.test(cleanLine)) return true;
   return false;
 }
 
@@ -205,8 +227,8 @@ function parseQuestions(rawText){
   const processedText = preprocessPdfText(rawText);
   const lines = processedText.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   
-  const qStart = /^(?:(?:Question|Q)\s*(\d{1,3})[\.\)\:]?|(\d{1,3})[\.\)\:]\s*)(.*)/i;
-  const optStart = /^(?:[•\*\-\s]*)(?:\(|\[)?([A-Da-d])[\.\)\:\]]\s+(.*)/;
+  const qStart = /^(?:(?:Question|Q)\s*(\d{1,3})[\.\)\:]?|(\d{1,3})[\s\|]+(\d{1,3})[\.\)\:]?|(\d{1,3})[\.\)\:]|(\d{1,3}))\s+(.*)/i;
+  const optStart = /^(?:[•\*\-\s]*)(?:\(|\[)?([A-Da-d]|[1-4])[\.\)\:\]\-\s]\s*(.*)/;
   const answerKeyHeader = /^(?:ANSWER\s*KEY|ANSWERS|SOLUTIONS|ANSWER\s*SHEET)/i;
 
   const rawQuestions = []; // {number, textLines:[], options:{A:'',B:'',...}, inlineAnswer: null}
@@ -216,11 +238,12 @@ function parseQuestions(rawText){
 
   for(const line of lines){
     if(isHeaderOrFooter(line)) continue;
-    if(answerKeyHeader.test(line)){ mode = 'answerkey'; continue; }
+    const cleanLineForCheck = line.replace(/\[\/?BOLD\]/gi, '').trim();
+    if(answerKeyHeader.test(cleanLineForCheck)){ mode = 'answerkey'; continue; }
 
     if(mode === 'answerkey'){
       // lines like "1. B" or "1) B" or "1 B" or "1. B - explanation"
-      const m = line.match(/^(\d{1,3})[\.\)\:]?\s*([A-Da-d])\b(.*)$/);
+      const m = cleanLineForCheck.match(/^(\d{1,3})[\.\)\:]?\s*([A-Da-d])\b(.*)$/);
       if(m){
         answerKey[parseInt(m[1],10)] = m[2].toUpperCase();
       }
@@ -233,18 +256,24 @@ function parseQuestions(rawText){
 
     if(qm && !om){
       if(current) rawQuestions.push(current);
-      const qNum = parseInt(qm[1] || qm[2], 10);
-      current = { number: qNum, textLines:[cleanBullets(qm[3])], options:{}, inlineAnswer: null };
+      const qNum = parseInt(qm[1] || qm[3] || qm[4] || qm[5], 10);
+      const qText = qm[6];
+      current = { number: qNum, textLines:[qText], options:{}, inlineAnswer: null };
     } else if(ansLineMatch && current){
       current.inlineAnswer = ansLineMatch[1].toUpperCase();
     } else if(om && current){
-      const letter = om[1].toUpperCase();
+      let letter = om[1].toUpperCase();
+      if(letter==='1') letter='A';
+      else if(letter==='2') letter='B';
+      else if(letter==='3') letter='C';
+      else if(letter==='4') letter='D';
+
       const extracted = extractInlineAnswerFromText(om[2]);
       if(extracted){
-        current.options[letter] = cleanBullets(extracted.cleanText);
+        current.options[letter] = extracted.cleanText;
         if(!current.inlineAnswer && extracted.letter) current.inlineAnswer = extracted.letter;
       } else {
-        current.options[letter] = cleanBullets(om[2]);
+        current.options[letter] = om[2];
       }
     } else if(current){
       const genericAnsMatch = line.match(/^(?:Answer|Ans|Correct\s*(?:Answer|Option))[\s\:\-\.]*(.*)/i);
@@ -252,7 +281,8 @@ function parseQuestions(rawText){
         const ansVal = genericAnsMatch[1].trim().toLowerCase();
         let matchedLetter = null;
         for(const [L, optText] of Object.entries(current.options)){
-          if(optText.trim().toLowerCase() === ansVal || ansVal.startsWith(L.toLowerCase() + '.')){
+          const cleanOptText = optText.replace(/\[\/?BOLD\]/gi, '').trim().toLowerCase();
+          if(cleanOptText === ansVal || ansVal.startsWith(L.toLowerCase() + '.')){
             matchedLetter = L;
             break;
           }
@@ -264,10 +294,10 @@ function parseQuestions(rawText){
         // continuation line: append to question text if no options started yet, else append to last option
         const optLetters = Object.keys(current.options);
         if(optLetters.length === 0){
-          current.textLines.push(cleanBullets(line));
+          current.textLines.push(line);
         } else {
           const last = optLetters[optLetters.length-1];
-          current.options[last] += ' ' + cleanBullets(line);
+          current.options[last] += ' ' + line;
         }
       }
     }
@@ -277,6 +307,26 @@ function parseQuestions(rawText){
   const valid = [];
   const invalid = [];
   rawQuestions.forEach((rq, idx) => {
+    // Check if options have [BOLD] answers!
+    const boldLetters = [];
+    Object.keys(rq.options).forEach(L => {
+      if(/\[BOLD\]/i.test(rq.options[L])){
+        boldLetters.push(L);
+      }
+    });
+
+    if(boldLetters.length > 0 && boldLetters.length < Object.keys(rq.options).length){
+      if(!rq.inlineAnswer){
+        rq.inlineAnswer = boldLetters[0];
+      }
+    }
+
+    // Clean [BOLD] tags
+    rq.textLines = rq.textLines.map(l => cleanBullets(l.replace(/\[\/?BOLD\]/gi, '')));
+    Object.keys(rq.options).forEach(L => {
+      rq.options[L] = cleanBullets(rq.options[L].replace(/\[\/?BOLD\]/gi, ''));
+    });
+
     // Post-process options to clean out any remaining embedded answer text
     Object.keys(rq.options).forEach(L => {
       const extracted = extractInlineAnswerFromText(rq.options[L], rq.options);
